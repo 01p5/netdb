@@ -37,8 +37,12 @@ services:
     command: ["kea-dhcp4", "-c", "/etc/kea/kea-dhcp4.conf"]
     # DHCP clients never hit this container directly — OpenWRT relays UDP/67
     # unicast from the router to the docker host, which publishes it here.
+    # KEA_BIND_ADDR lets you restrict the publish to a specific host IP
+    # (e.g. "10.2.1.216") so we don't answer broadcast DHCP from other
+    # hosts on the same L2 and conflict with whatever DHCP is already there.
+    # Default is 0.0.0.0 which keeps dev-box behavior unchanged.
     ports:
-      - "67:67/udp"
+      - "${KEA_BIND_ADDR:-0.0.0.0}:67:67/udp"
     volumes:
       - ./kea/config:/etc/kea:ro
       - ./data/kea-sockets:/run/kea
