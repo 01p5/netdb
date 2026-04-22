@@ -1,0 +1,13 @@
+.git
+netdb
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+data/
+docs
+dns-docker-compose.yml
+docker-compose.yml
+compose.prod.yaml
+.env
+.env.*
+!.env.example

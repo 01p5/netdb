@@ -1,0 +1,22 @@
+# Production overrides. Adds the host port-53 publish that docker-compose.yml
+# deliberately omits (so dev boxes don't collide with the host resolver).
+#
+# Deploy with:
+#   docker compose -f docker-compose.yml -f compose.prod.yaml up -d
+#
+# Prerequisite: on the deploy host, systemd-resolved (or whatever owns :53)
+# must be stopped / moved off the port first. Common on Ubuntu:
+#   sudo systemctl disable --now systemd-resolved
+#   echo 'nameserver 1.1.1.1' | sudo tee /etc/resolv.conf
+services:
+  dns-server:
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      # Uncomment whichever transport(s) you need:
+      # - "853:853/udp" # DoQ
+      # - "853:853/tcp" # DoT
+      # - "443:443/udp" # DoH HTTP/3
+      # - "443:443/tcp" # DoH HTTP/1.1+2
+      # - "80:80/tcp"   # DoH behind reverse proxy / certbot
+      # - "8053:8053/tcp" # DoH behind reverse proxy

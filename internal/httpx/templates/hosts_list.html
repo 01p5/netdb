@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1>Hosts</h1>
+
+<form class="inline" hx-post="/hosts" hx-target="#hosts-tbody" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="name"        placeholder="name (e.g. server1)" required>
+  <input name="description" placeholder="description">
+  <input name="tags"        placeholder="tags (comma-separated)">
+  <button type="submit">add host</button>
+</form>
+
+{{template "hosts_table" .Hosts}}
+{{end}}
+
+{{define "hosts_table"}}
+<table>
+  <thead><tr><th>name</th><th>description</th><th>tags</th><th></th></tr></thead>
+  <tbody id="hosts-tbody">
+    {{range .}}{{template "host_row" .}}{{else}}
+    <tr><td colspan="4" class="empty">no hosts yet — add one above</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "host_row"}}
+<tr id="host-{{.ID}}">
+  <td><a href="/hosts/{{.ID}}">{{.Name}}</a></td>
+  <td>{{.Description}}</td>
+  <td>{{range $t := splitTags .Tags}}<span class="tag">{{$t}}</span>{{end}}</td>
+  <td>
+    <button class="danger"
+            hx-delete="/hosts/{{.ID}}"
+            hx-target="#host-{{.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="delete host {{.Name}}?">delete</button>
+  </td>
+</tr>
+{{end}}

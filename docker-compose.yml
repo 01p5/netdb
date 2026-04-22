@@ -1,0 +1,89 @@
+services:
+  netdb:
+    build: .
+    container_name: netdb
+    ports:
+      - "8080:8080"
+    environment:
+      - NETDB_ADDR=:8080
+      - NETDB_DB=/data/netdb.sqlite
+      - NETDB_RECONCILE_INTERVAL=${NETDB_RECONCILE_INTERVAL:-60s}
+      # Technitium: either a pre-made token or user+password for auto-bootstrap.
+      - NETDB_TECHNITIUM_URL=http://dns-server:5380
+      - NETDB_TECHNITIUM_TOKEN=${NETDB_TECHNITIUM_TOKEN:-}
+      - NETDB_TECHNITIUM_USER=${NETDB_TECHNITIUM_USER:-admin}
+      - NETDB_TECHNITIUM_PASSWORD=${NETDB_TECHNITIUM_PASSWORD:-${DNS_SERVER_ADMIN_PASSWORD:-CHANGEME}}
+      - NETDB_TECHNITIUM_INSECURE=${NETDB_TECHNITIUM_INSECURE:-false}
+      # Cloudflare: API token with Zone:DNS:Edit on the zones you manage.
+      - NETDB_CLOUDFLARE_TOKEN=${NETDB_CLOUDFLARE_TOKEN:-}
+      # Kea control-agent URL — netdb pushes Dhcp4 config via config-set
+      # and polls lease4-get-all to ingest active leases.
+      - NETDB_KEA_URL=http://kea-ctrl-agent:8000/
+      - NETDB_KEA_SYNC_INTERVAL=${NETDB_KEA_SYNC_INTERVAL:-60s}
+      - NETDB_KEA_LEASE_POLL_INTERVAL=${NETDB_KEA_LEASE_POLL_INTERVAL:-30s}
+      # Basic auth. Both empty → auth off.
+      - NETDB_USER=${NETDB_USER:-}
+      - NETDB_PASSWORD=${NETDB_PASSWORD:-}
+    volumes:
+      - ./data/netdb:/data
+    depends_on:
+      - kea-ctrl-agent
+      - dns-server
+    restart: unless-stopped
+
+  kea-dhcp4:
+    build: ./kea
+    container_name: kea-dhcp4
+    command: ["kea-dhcp4", "-c", "/etc/kea/kea-dhcp4.conf"]
+    # DHCP clients never hit this container directly — OpenWRT relays UDP/67
+    # unicast from the router to the docker host, which publishes it here.
+    ports:
+      - "67:67/udp"
+    volumes:
+      - ./kea/config:/etc/kea:ro
+      - ./data/kea-sockets:/run/kea
+      - ./data/kea-leases:/var/lib/kea
+    restart: unless-stopped
+
+  kea-ctrl-agent:
+    build: ./kea
+    container_name: kea-ctrl-agent
+    command: ["kea-ctrl-agent", "-c", "/etc/kea/kea-ctrl-agent.conf"]
+    # Not published — only netdb reaches it, on the internal compose network.
+    expose:
+      - "8000"
+    volumes:
+      - ./kea/config:/etc/kea:ro
+      - ./data/kea-sockets:/run/kea
+    depends_on:
+      - kea-dhcp4
+    restart: unless-stopped
+
+  # --- merged from dns-docker-compose.yml ---
+  # Port 53 (real DNS) is intentionally NOT published here so bringing this
+  # stack up on a dev box doesn't fight with systemd-resolved. Use
+  # `compose.prod.yaml` to add the 53 publishes for real deployments:
+  #   docker compose -f docker-compose.yml -f compose.prod.yaml up -d
+  # For dev-time lookups, query from inside the network:
+  #   docker compose run --rm --entrypoint nslookup busybox foo dns-server
+  dns-server:
+    container_name: dns-server
+    hostname: dns-server
+    image: technitium/dns-server:latest
+    ports:
+      - "5380:5380/tcp" # DNS web console (HTTP)
+      - "53443:53443/tcp" # DNS web console (HTTPS)
+    environment:
+      - DNS_SERVER_DOMAIN=ns1.example.com
+      - DNS_SERVER_ADMIN_PASSWORD=${DNS_SERVER_ADMIN_PASSWORD:-CHANGEME}
+      - DNS_SERVER_PREFER_IPV6=false
+      - DNS_SERVER_WEB_SERVICE_LOCAL_ADDRESSES=0.0.0.0
+      - DNS_SERVER_WEB_SERVICE_HTTP_PORT=5380
+      - DNS_SERVER_WEB_SERVICE_HTTPS_PORT=53443
+      - DNS_SERVER_WEB_SERVICE_ENABLE_HTTPS=true
+      - DNS_SERVER_WEB_SERVICE_USE_SELF_SIGNED_CERT=true
+    volumes:
+      - ./data/dns:/etc/dns
+    restart: unless-stopped
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65000

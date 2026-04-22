@@ -1,0 +1,21 @@
+# Runtime state (sqlite, kea leases, technitium config) — owned by docker-root
+data/
+
+# Built binaries
+/netdb
+/dhcp-probe
+/tmp/
+
+# Local env overrides (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Editor / IDE scratch
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/

@@ -1,0 +1,68 @@
+{{define "content"}}
+<h1>Zones</h1>
+<p class="dim">Forward zones serve hostname → IP. Reverse zones serve IP → hostname.
+   Link providers per-zone, and link zones to subnets from the subnets page.</p>
+
+<form class="inline" hx-post="/zones" hx-target="#zones-tbody" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="name" placeholder="zone name (e.g. lan.example.com)" required>
+  <select name="kind">
+    <option value="forward">forward</option>
+    <option value="reverse">reverse</option>
+  </select>
+  <input name="default_ttl" type="number" placeholder="ttl" value="300" style="width:5rem;">
+  <input name="description" placeholder="description">
+  <button type="submit">add zone</button>
+</form>
+
+<table>
+  <thead><tr><th>name</th><th>kind</th><th>ttl</th><th>providers</th><th>description</th><th></th></tr></thead>
+  <tbody id="zones-tbody">
+    {{range .Zones}}{{template "zone_row" .}}{{else}}
+    <tr><td colspan="6" class="empty">no zones yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "zone_row"}}
+<tr id="zone-{{.Zone.ID}}">
+  <td><code>{{.Zone.Name}}</code></td>
+  <td>{{.Zone.Kind}}</td>
+  <td>{{.Zone.DefaultTTL}}</td>
+  <td>
+    <span id="zone-{{.Zone.ID}}-providers">
+      {{range .Providers}}{{template "zone_provider_pill" dict "ZoneID" $.Zone.ID "Provider" .}}{{end}}
+    </span>
+    <form class="inline" style="margin:.25rem 0 0;"
+          hx-post="/zones/{{.Zone.ID}}/providers"
+          hx-target="#zone-{{.Zone.ID}}-providers"
+          hx-swap="beforeend"
+          hx-on::after-request="this.reset()">
+      <select name="provider_id" required>
+        <option value="">+ link provider</option>
+        {{range .AllProviders}}<option value="{{.ID}}">{{.Name}} ({{.Kind}})</option>{{end}}
+      </select>
+      <button type="submit">link</button>
+    </form>
+  </td>
+  <td>{{.Zone.Description}}</td>
+  <td>
+    <button class="danger"
+            hx-delete="/zones/{{.Zone.ID}}"
+            hx-target="#zone-{{.Zone.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="delete zone {{.Zone.Name}}?">delete</button>
+  </td>
+</tr>
+{{end}}
+
+{{define "zone_provider_pill"}}
+<span class="tag" id="zone-{{.ZoneID}}-provider-{{.Provider.ID}}">
+  {{.Provider.Name}} <span class="dim">({{.Provider.Kind}})</span>
+  <a href="#"
+     hx-delete="/zones/{{.ZoneID}}/providers/{{.Provider.ID}}"
+     hx-target="#zone-{{.ZoneID}}-provider-{{.Provider.ID}}"
+     hx-swap="outerHTML"
+     style="color: var(--danger); margin-left: .25rem;">×</a>
+</span>
+{{end}}

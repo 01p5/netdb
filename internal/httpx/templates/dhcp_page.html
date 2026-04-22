@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1>DHCP (Kea)</h1>
+<p class="dim">netdb pushes a full Dhcp4 config to the Kea Control Agent on a timer
+  and after every mutation. Active leases are polled back into netdb as
+  <code>kind=dynamic</code> ip_assignments — unknown MACs become new
+  "dhcp-discovered" hosts with <code>dns_enabled=0</code>.</p>
+
+<div style="margin: .75rem 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--line); border-radius: 4px;">
+  <strong>config push (netdb → Kea):</strong>
+  last run <span class="dim">{{.Ago}}</span>
+  {{if .Status.Duration}}<span class="dim">({{.Status.Duration}})</span>{{end}}
+  {{if .Status.Message}}<div class="dim" style="margin-top:.3rem;">{{.Status.Message}}</div>{{end}}
+  {{if .Status.Error}}
+    <div style="color: var(--danger); margin-top: .3rem;">✗ {{.Status.Error}}</div>
+  {{else if .Status.Success}}
+    <div style="color: var(--good); margin-top: .3rem;">
+      ✓ pushed {{.Status.Subnets}} subnet(s), {{.Status.Reservations}} reservation(s)
+    </div>
+  {{end}}
+  <form class="inline" style="margin-top: .6rem;" hx-post="/dhcp/sync" hx-swap="none">
+    <button type="submit">sync now</button>
+  </form>
+</div>
+
+<div style="margin: .75rem 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--line); border-radius: 4px;">
+  <strong>lease ingestion (Kea → netdb):</strong>
+  last poll <span class="dim">{{.LeaseAgo}}</span>
+  {{if .LeaseStatus.Duration}}<span class="dim">({{.LeaseStatus.Duration}})</span>{{end}}
+  {{if .LeaseStatus.Message}}<div class="dim" style="margin-top:.3rem;">{{.LeaseStatus.Message}}</div>{{end}}
+  {{if .LeaseStatus.Error}}
+    <div style="color: var(--danger); margin-top: .3rem;">✗ {{.LeaseStatus.Error}}</div>
+  {{else if .LeaseStatus.Success}}
+    <div style="color: var(--good); margin-top: .3rem;">
+      ✓ saw {{.LeaseStatus.LeaseRows}} active lease(s), pruned {{.LeaseStatus.Removed}} stale
+    </div>
+  {{end}}
+  <form class="inline" style="margin-top: .6rem;" hx-post="/dhcp/poll" hx-swap="none">
+    <button type="submit">poll now</button>
+  </form>
+</div>
+
+<p class="dim">Knobs: <code>NETDB_KEA_URL</code>, <code>NETDB_KEA_SYNC_INTERVAL</code>,
+  <code>NETDB_KEA_LEASE_POLL_INTERVAL</code>.</p>
+{{end}}

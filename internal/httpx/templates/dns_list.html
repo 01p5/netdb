@@ -1,0 +1,90 @@
+{{define "content"}}
+<h1>DNS records</h1>
+<p class="dim">Auto rows are derived from host/IP/subnet-zone links and refresh on
+  every mutation. Manual rows (coming later) are user-added. The reconciler
+  pushes these records to each linked provider on a timer.</p>
+
+<div style="margin: .75rem 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--line); border-radius: 4px;">
+  <strong>reconciler:</strong>
+  last run <span class="dim">{{.Ago}}</span>
+  {{if .Status.Duration}}<span class="dim">({{.Status.Duration}})</span>{{end}}
+  {{if .Status.Message}}<div class="dim" style="margin-top:.3rem;">{{.Status.Message}}</div>{{end}}
+  {{range .Status.Providers}}
+    <div style="margin-top: .4rem;">
+      {{if .OK}}<span style="color: var(--good);">✓</span>{{else}}<span style="color: var(--danger);">✗</span>{{end}}
+      <code>{{.Name}}</code> <span class="dim">({{.Kind}})</span>
+      {{if .OK}}<span class="dim">— added {{.Added}}, deleted {{.Deleted}}</span>{{end}}
+      {{if .Error}}<span style="color: var(--danger);"> — {{.Error}}</span>{{end}}
+      {{range .Zones}}
+        <div style="margin-left: 1.5rem; font-size: .85rem;">
+          {{if .OK}}<span style="color: var(--good);">✓</span>{{else}}<span style="color: var(--danger);">✗</span>{{end}}
+          <code>{{.Name}}</code>
+          <span class="dim">desired {{.Desired}} / remote {{.Actual}} / +{{.Added}} / -{{.Deleted}}</span>
+          {{if .Error}}<span style="color: var(--danger);"> — {{.Error}}</span>{{end}}
+        </div>
+      {{end}}
+    </div>
+  {{end}}
+  <form class="inline" style="margin-top: .6rem;" hx-post="/dns/sync" hx-swap="none">
+    <button type="submit">sync now</button>
+  </form>
+</div>
+
+<h2>add manual record</h2>
+<form class="inline" hx-post="/dns" hx-swap="none" style="flex-wrap: wrap;">
+  <select name="zone" required>
+    <option value="">pick zone…</option>
+    {{range .Zones}}<option value="{{.Name}}">{{.Name}} ({{.Kind}})</option>{{end}}
+  </select>
+  <input name="fqdn" placeholder="fqdn (e.g. mail.lan.example.com)" required style="flex: 2 1 12rem;">
+  <select name="type" required>
+    <option value="CNAME">CNAME</option>
+    <option value="A">A</option>
+    <option value="AAAA">AAAA</option>
+    <option value="TXT">TXT</option>
+    <option value="MX">MX</option>
+    <option value="PTR">PTR</option>
+  </select>
+  <input name="target" placeholder="target / value" required style="flex: 2 1 12rem;">
+  <input name="ttl" type="number" placeholder="ttl" style="width: 5rem;">
+  <button type="submit">add</button>
+</form>
+<p class="dim">For <code>A</code>/<code>AAAA</code>, target is the IP literal.
+  For <code>MX</code>, use <code>"10 mail.example.com"</code> form. A manual
+  record at the same fqdn+type as an auto one suppresses the auto.</p>
+
+<table>
+  <thead><tr>
+    <th>zone</th><th>fqdn</th><th>type</th><th>target / ips</th><th>ttl</th><th>source</th><th></th>
+  </tr></thead>
+  <tbody>
+    {{range .Records}}
+    <tr id="dns-{{.ID}}">
+      <td>{{if .ZoneName}}<code>{{.ZoneName}}</code>{{else}}<span class="dim">—</span>{{end}}</td>
+      <td><code>{{.FQDN}}</code></td>
+      <td>{{.Type}}</td>
+      <td>
+        {{if .Target}}<code>{{.Target}}</code>{{end}}
+        {{range .IPs}}<code>{{.}}</code> {{end}}
+        {{if and (not .Target) (not .IPs)}}<span class="dim">(no targets)</span>{{end}}
+      </td>
+      <td>{{.TTL}}</td>
+      <td>{{if eq .Source "auto"}}<span class="tag">auto</span>{{else}}<span class="tag">manual</span>{{end}}</td>
+      <td>
+        {{if eq .Source "manual"}}
+          <button class="danger"
+                  hx-delete="/dns/{{.ID}}"
+                  hx-target="#dns-{{.ID}}"
+                  hx-swap="outerHTML"
+                  hx-confirm="delete {{.FQDN}} {{.Type}}?">delete</button>
+        {{else}}
+          <span class="dim" title="auto records are managed by the synthesizer — edit the host/subnet instead">—</span>
+        {{end}}
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="7" class="empty">no dns records yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

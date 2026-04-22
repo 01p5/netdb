@@ -1,0 +1,73 @@
+{{define "content"}}
+<h1>Subnets</h1>
+<p class="dim">Link a subnet's forward and reverse zones to make netdb auto-generate
+  A/AAAA and PTR records for every host whose IP lands in it.</p>
+
+<form class="inline" hx-post="/subnets" hx-target="#subnets-tbody" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="cidr"        placeholder="cidr (e.g. 192.168.10.0/24)" required>
+  <input name="vlan"        placeholder="vlan (optional)" type="number">
+  <input name="gateway"     placeholder="gateway">
+  <input name="description" placeholder="description">
+  <input name="dhcp_range_start" placeholder="dhcp start">
+  <input name="dhcp_range_end"   placeholder="dhcp end">
+  <input name="dns_servers"      placeholder="dns servers (csv, e.g. 10.99.1.2)">
+  <button type="submit">add subnet</button>
+</form>
+
+<table>
+  <thead><tr><th>cidr</th><th>vlan</th><th>gateway</th><th>dhcp range</th><th>zones</th><th>description</th><th></th></tr></thead>
+  <tbody id="subnets-tbody">
+    {{range .Subnets}}{{template "subnet_row" .}}{{else}}
+    <tr><td colspan="7" class="empty">no subnets yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "subnet_row"}}
+<tr id="subnet-{{.Subnet.ID}}">
+  <td><code>{{.Subnet.CIDR}}</code></td>
+  <td>{{if .Subnet.VLAN}}{{.Subnet.VLAN}}{{else}}<span class="dim">—</span>{{end}}</td>
+  <td>{{if .Subnet.Gateway}}<code>{{.Subnet.Gateway}}</code>{{else}}<span class="dim">—</span>{{end}}</td>
+  <td>{{if .Subnet.DHCPRangeStart}}<code>{{.Subnet.DHCPRangeStart}}</code> – <code>{{.Subnet.DHCPRangeEnd}}</code>{{else}}<span class="dim">—</span>{{end}}</td>
+  <td>
+    <span id="subnet-{{.Subnet.ID}}-zones">
+      {{range .Zones}}{{template "subnet_zone_pill" dict "SubnetID" $.Subnet.ID "Link" .}}{{end}}
+    </span>
+    <form class="inline" style="margin:.25rem 0 0;"
+          hx-post="/subnets/{{.Subnet.ID}}/zones"
+          hx-target="#subnet-{{.Subnet.ID}}-zones"
+          hx-swap="beforeend"
+          hx-on::after-request="this.reset()">
+      <select name="zone_id" required>
+        <option value="">+ link zone</option>
+        {{range .AllZones}}<option value="{{.ID}}">{{.Name}} ({{.Kind}})</option>{{end}}
+      </select>
+      <select name="role">
+        <option value="forward">forward</option>
+        <option value="reverse">reverse</option>
+      </select>
+      <button type="submit">link</button>
+    </form>
+  </td>
+  <td>{{.Subnet.Description}}</td>
+  <td>
+    <button class="danger"
+            hx-delete="/subnets/{{.Subnet.ID}}"
+            hx-target="#subnet-{{.Subnet.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="delete subnet {{.Subnet.CIDR}}?">delete</button>
+  </td>
+</tr>
+{{end}}
+
+{{define "subnet_zone_pill"}}
+<span class="tag" id="subnet-{{.SubnetID}}-zone-{{.Link.Zone.ID}}-{{.Link.Role}}">
+  {{.Link.Zone.Name}} <span class="dim">({{.Link.Role}})</span>
+  <a href="#"
+     hx-delete="/subnets/{{.SubnetID}}/zones/{{.Link.Zone.ID}}/{{.Link.Role}}"
+     hx-target="#subnet-{{.SubnetID}}-zone-{{.Link.Zone.ID}}-{{.Link.Role}}"
+     hx-swap="outerHTML"
+     style="color: var(--danger); margin-left: .25rem;">×</a>
+</span>
+{{end}}

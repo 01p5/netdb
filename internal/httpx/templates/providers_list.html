@@ -1,0 +1,42 @@
+{{define "content"}}
+<h1>Providers</h1>
+<p class="dim">Credentials live in environment variables
+  (<code>NETDB_CLOUDFLARE_TOKEN</code>, <code>NETDB_TECHNITIUM_TOKEN</code>).
+  The rows below configure which DNS backends exist and what non-secret
+  settings they use. Link them to zones from the zones page.</p>
+
+<form class="inline" hx-post="/providers" hx-target="#providers-tbody" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="name" placeholder="name (e.g. cf-prod)" required>
+  <select name="kind" required>
+    <option value="cloudflare">cloudflare</option>
+    <option value="technitium">technitium</option>
+  </select>
+  <input name="config_json" placeholder='config json (optional, e.g. {"api_url":"..."})' style="flex:1;">
+  <button type="submit">add provider</button>
+</form>
+
+<table>
+  <thead><tr><th>name</th><th>kind</th><th>enabled</th><th>config</th><th></th></tr></thead>
+  <tbody id="providers-tbody">
+    {{range .Providers}}{{template "provider_row" .}}{{else}}
+    <tr><td colspan="5" class="empty">no providers yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "provider_row"}}
+<tr id="provider-{{.ID}}">
+  <td>{{.Name}}</td>
+  <td>{{.Kind}}</td>
+  <td>{{if .Enabled}}<span class="dim">yes</span>{{else}}<span class="dim">no</span>{{end}}</td>
+  <td><code style="font-size:.8rem;">{{.ConfigJSON}}</code></td>
+  <td>
+    <button class="danger"
+            hx-delete="/providers/{{.ID}}"
+            hx-target="#provider-{{.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="delete provider {{.Name}}? this unlinks it from all zones.">delete</button>
+  </td>
+</tr>
+{{end}}

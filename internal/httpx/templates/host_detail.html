@@ -1,0 +1,76 @@
+{{define "content"}}
+<p><a href="/hosts" class="dim">&larr; all hosts</a></p>
+<h1>{{.Host.Name}}</h1>
+
+<form class="inline" hx-post="/hosts/{{.Host.ID}}" hx-swap="none" style="flex-wrap: wrap;">
+  <input name="name"        value="{{.Host.Name}}"        placeholder="name" required>
+  <input name="description" value="{{.Host.Description}}" placeholder="description">
+  <input name="tags"        value="{{.Host.Tags}}"        placeholder="tags (comma-separated)">
+  <input name="dns_name"    value="{{.Host.DNSName}}"     placeholder="dns_name (override)">
+  <label style="display:flex; align-items:center; gap:.3rem;">
+    <input type="checkbox" name="dns_enabled" {{if .Host.DNSEnabled}}checked{{end}}>
+    dns_enabled
+  </label>
+  <button type="submit">save</button>
+</form>
+
+<h2>NICs</h2>
+<form class="inline" hx-post="/hosts/{{.Host.ID}}/nics" hx-target="#nics-tbody" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="mac"   placeholder="mac (aa:bb:cc:dd:ee:ff)" required>
+  <input name="label" placeholder="label (optional)">
+  <button type="submit">add nic</button>
+</form>
+
+<table>
+  <thead><tr><th>mac</th><th>label</th><th>ips</th><th></th></tr></thead>
+  <tbody id="nics-tbody">
+    {{range .NICs}}{{template "nic_row" .}}{{else}}
+    <tr><td colspan="4" class="empty">no nics yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "nic_row"}}
+<tr id="nic-{{.NIC.ID}}">
+  <td><code>{{.NIC.MAC}}</code></td>
+  <td>{{.NIC.Label}}</td>
+  <td>
+    <ul id="ips-nic-{{.NIC.ID}}" style="margin:0; padding-left: 1rem;">
+      {{range .IPs}}{{template "ip_li" .}}{{end}}
+    </ul>
+    <form class="inline" style="margin:.25rem 0 0;"
+          hx-post="/nics/{{.NIC.ID}}/ips"
+          hx-target="#ips-nic-{{.NIC.ID}}"
+          hx-swap="beforeend"
+          hx-on::after-request="this.reset()">
+      <input name="ip" placeholder="ip" required style="width:10rem;">
+      <select name="kind">
+        <option value="static">static</option>
+        <option value="reserved">reserved</option>
+        <option value="dynamic">dynamic</option>
+      </select>
+      <button type="submit">+ ip</button>
+    </form>
+  </td>
+  <td>
+    <button class="danger"
+            hx-delete="/nics/{{.NIC.ID}}"
+            hx-target="#nic-{{.NIC.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="delete nic {{.NIC.MAC}} and its ip assignments?">delete</button>
+  </td>
+</tr>
+{{end}}
+
+{{define "ip_li"}}
+<li id="ip-{{.ID}}">
+  <code>{{.IP}}</code>
+  <span class="dim">({{.Kind}})</span>
+  <button class="danger"
+          style="padding:0 .4rem; font-size:.75rem;"
+          hx-delete="/ips/{{.ID}}"
+          hx-target="#ip-{{.ID}}"
+          hx-swap="outerHTML">×</button>
+</li>
+{{end}}
