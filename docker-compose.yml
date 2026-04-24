@@ -78,7 +78,9 @@ services:
       - "5380:5380/tcp" # DNS web console (HTTP)
       - "53443:53443/tcp" # DNS web console (HTTPS)
     environment:
-      - DNS_SERVER_DOMAIN=ns1.example.com
+      # Set DNS_SERVER_DOMAIN in .env to your authoritative NS name
+      # (appears in SOA.MNAME and as the default server label in Technitium).
+      - DNS_SERVER_DOMAIN=${DNS_SERVER_DOMAIN:-ns1.example.com}
       # Required: set DNS_SERVER_ADMIN_PASSWORD in .env. compose refuses to
       # start if it's unset, so we never fall back to a weak default.
       - DNS_SERVER_ADMIN_PASSWORD=${DNS_SERVER_ADMIN_PASSWORD:?set DNS_SERVER_ADMIN_PASSWORD in .env}
