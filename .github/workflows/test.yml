@@ -25,8 +25,16 @@ jobs:
       - name: go test
         run: go test ./... -race -count=1 -cover -covermode=atomic -coverprofile=coverage.out
 
-      - name: coverage summary
-        run: go tool cover -func=coverage.out | tail -1
+      - name: coverage gate
+        env:
+          MIN_COVERAGE: "80.0"
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $NF); print $NF}')
+          echo "total coverage: ${total}%"
+          awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN {exit !(t+0 >= m+0)}' || {
+            echo "::error::coverage ${total}% is below required ${MIN_COVERAGE}%"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         if: always()
