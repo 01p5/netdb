@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"netdb/internal/kea"
+	mcppkg "netdb/internal/mcp"
 	"netdb/internal/reconcile"
 	"netdb/internal/store"
 )
@@ -110,6 +111,20 @@ func New(st *store.Store, rec *reconcile.Reconciler, keaSync *kea.Syncer, leaseP
 		opts: opts, pages: pages, mux: http.NewServeMux(),
 	}
 	s.routes()
+
+	// Mount the MCP JSON-RPC handler alongside the HTML UI. Same
+	// auth gate (checkAuth) applies because ServeHTTP runs it
+	// before delegating to the mux. /healthz exempted upstream.
+	mcpSrv := mcppkg.RegisterAll(mcppkg.New(mcppkg.ServerInfo{
+		Name: "netdb", Version: "0.1.0",
+	}), mcppkg.Deps{
+		Store:       st,
+		Reconciler:  rec,
+		Kea:         keaSync,
+		LeasePoller: leasePoller,
+	})
+	s.mux.Handle("POST /mcp", mcpSrv)
+
 	return s
 }
 
