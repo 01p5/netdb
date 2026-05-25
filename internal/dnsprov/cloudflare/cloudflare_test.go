@@ -120,6 +120,77 @@ func TestCloudflareDeleteWithoutID(t *testing.T) {
 	}
 }
 
+func TestCloudflareNameKind(t *testing.T) {
+	c := New("cf-main", Config{Token: "t"})
+	if c.Name() != "cf-main" {
+		t.Errorf("Name: %q", c.Name())
+	}
+	if c.Kind() != "cloudflare" {
+		t.Errorf("Kind: %q", c.Kind())
+	}
+}
+
+func TestCloudflareDefaultBaseURL(t *testing.T) {
+	c := New("cf", Config{Token: "t"})
+	if c.cfg.BaseURL != defaultBaseURL {
+		t.Errorf("default BaseURL not applied: %q", c.cfg.BaseURL)
+	}
+}
+
+func TestCloudflareFirstError(t *testing.T) {
+	if got := firstError(nil); got != "unknown error" {
+		t.Errorf("nil errs: %q", got)
+	}
+	if got := firstError([]apiError{{Code: 7003, Message: "boom"}}); got != "code 7003: boom" {
+		t.Errorf("formatted: %q", got)
+	}
+}
+
+func TestCloudflareErrorEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(w, nil, nil)
+		// Overwrite the envelope to be an error one.
+	}))
+	// Replace with a custom server that returns success=false.
+	srv.Close()
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":1,"message":"nope"}]}`))
+	}))
+	defer srv.Close()
+	c := New("cf", Config{BaseURL: srv.URL, Token: "t"})
+	if err := c.EnsureZone(context.Background(), "x.example"); err == nil {
+		t.Error("expected error on success=false")
+	}
+}
+
+func TestCloudflareZoneNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeEnvelope(w, []any{}, nil)
+	}))
+	defer srv.Close()
+	c := New("cf", Config{BaseURL: srv.URL, Token: "t"})
+	if err := c.EnsureZone(context.Background(), "missing.example"); err == nil {
+		t.Error("expected error when zone missing")
+	}
+}
+
+func TestCloudflareAddMXBadFormat(t *testing.T) {
+	srv := newFakeCF(t)
+	defer srv.Close()
+	c := New("cf", Config{BaseURL: srv.URL, Token: "test-token"})
+	err := c.AddRecord(context.Background(), "example.com",
+		dnsprov.Record{Name: "example.com", Type: "MX", Value: "no-pref"})
+	if err == nil {
+		t.Error("expected error for MX without prefix integer")
+	}
+	err = c.AddRecord(context.Background(), "example.com",
+		dnsprov.Record{Name: "example.com", Type: "MX", Value: "abc mail.example.com"})
+	if err == nil {
+		t.Error("expected error for non-integer preference")
+	}
+}
+
 func TestCloudflareMXRoundTrip(t *testing.T) {
 	srv := newFakeCF(t)
 	defer srv.Close()
