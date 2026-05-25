@@ -203,6 +203,91 @@ func TestReconcileTechnitiumMissingURL(t *testing.T) {
 	}
 }
 
+func TestReconcileStartReturnsOnCtxCancel(t *testing.T) {
+	st := openStore(t)
+	r := New(st, Config{}, 50*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { r.Start(ctx); close(done) }()
+	// Let one tick happen, then cancel.
+	time.Sleep(75 * time.Millisecond)
+	r.Trigger() // also exercise the trigger select branch
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Start did not return on ctx cancel")
+	}
+}
+
+func TestReconcileZoneAddDeleteErrors(t *testing.T) {
+	st := openStore(t)
+	ctx := context.Background()
+
+	z, _ := st.CreateZone(ctx, "lan.example", "forward", "", 300)
+	p, _ := st.CreateProvider(ctx, "cf", "cloudflare", "", true)
+	if err := st.LinkZoneProvider(ctx, z.ID, p.ID); err != nil {
+		t.Fatalf("LinkZoneProvider: %v", err)
+	}
+	if _, err := st.CreateManualDNSRecord(ctx, "lan.example", "host.lan.example", "A", "10.0.0.5", 300); err != nil {
+		t.Fatalf("manual A: %v", err)
+	}
+
+	// Server that fails every add/delete after the initial zone lookup + empty list.
+	cf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/zones":
+			_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":[{"id":"z-1","name":"lan.example"}]}`))
+		case r.URL.Path == "/zones/z-1/dns_records" && r.Method == http.MethodGet:
+			// Return one stray that the reconciler will want to DELETE.
+			_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":[{"id":"r-1","name":"stray.lan.example","type":"A","content":"9.9.9.9","ttl":300}],"result_info":{"total_pages":1}}`))
+		case r.URL.Path == "/zones/z-1/dns_records" && r.Method == http.MethodPost:
+			// Adds fail with success=false.
+			_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":7003,"message":"nope"}]}`))
+		case strings.HasPrefix(r.URL.Path, "/zones/z-1/dns_records/") && r.Method == http.MethodDelete:
+			_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":7003,"message":"nope"}]}`))
+		}
+	}))
+	defer cf.Close()
+
+	rec := New(st, Config{CloudflareToken: "tok", CloudflareBaseURL: cf.URL}, time.Hour)
+	rec.runOnce(ctx)
+	st2 := rec.Status()
+	if len(st2.Providers) != 1 {
+		t.Fatalf("expected provider entry, got %+v", st2)
+	}
+	ps := st2.Providers[0]
+	if ps.OK {
+		t.Errorf("provider OK should be false, got %+v", ps)
+	}
+	if len(ps.Zones) == 0 || ps.Zones[0].Error == "" {
+		t.Errorf("expected zone-level error, got %+v", ps.Zones)
+	}
+}
+
+func TestReconcileZoneEnsureFailure(t *testing.T) {
+	st := openStore(t)
+	ctx := context.Background()
+	z, _ := st.CreateZone(ctx, "lan.example", "forward", "", 300)
+	p, _ := st.CreateProvider(ctx, "cf", "cloudflare", "", true)
+	if err := st.LinkZoneProvider(ctx, z.ID, p.ID); err != nil {
+		t.Fatalf("LinkZoneProvider: %v", err)
+	}
+	// CF returns an empty zones array — EnsureZone fails.
+	cf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":[]}`))
+	}))
+	defer cf.Close()
+	rec := New(st, Config{CloudflareToken: "tok", CloudflareBaseURL: cf.URL}, time.Hour)
+	rec.runOnce(ctx)
+	ps := rec.Status().Providers
+	if len(ps) != 1 || len(ps[0].Zones) != 1 || ps[0].Zones[0].Error == "" {
+		t.Errorf("expected EnsureZone error path, got %+v", ps)
+	}
+}
+
 func TestReconcileNoZonesLinked(t *testing.T) {
 	st := openStore(t)
 	ctx := context.Background()

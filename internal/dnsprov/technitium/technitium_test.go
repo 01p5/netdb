@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -319,5 +320,100 @@ func TestBootstrapTokenMissingCreds(t *testing.T) {
 	err := c.EnsureZone(context.Background(), "z")
 	if err == nil {
 		t.Error("expected error without token or user/pass")
+	}
+}
+
+func TestNameKind(t *testing.T) {
+	c := New("tech-main", Config{Token: "t"})
+	if c.Name() != "tech-main" {
+		t.Errorf("Name: %q", c.Name())
+	}
+	if c.Kind() != "technitium" {
+		t.Errorf("Kind: %q", c.Kind())
+	}
+}
+
+func TestRdataToValueAllTypes(t *testing.T) {
+	cases := []struct {
+		rtype string
+		data  map[string]any
+		want  string
+		ok    bool
+	}{
+		{"A", map[string]any{"ipAddress": "10.0.0.1"}, "10.0.0.1", true},
+		{"AAAA", map[string]any{"ipAddress": "::1"}, "::1", true},
+		{"CNAME", map[string]any{"cname": "x.example."}, "x.example", true},
+		{"PTR", map[string]any{"ptrName": "host.lan.example."}, "host.lan.example", true},
+		{"TXT", map[string]any{"text": "hello"}, "hello", true},
+		{"MX", map[string]any{"preference": float64(10), "exchange": "mail.example."}, "10 mail.example", true},
+		{"SOA", map[string]any{}, "", false},
+		{"NS", map[string]any{}, "", false},
+	}
+	for _, c := range cases {
+		got, ok := rdataToValue(c.rtype, c.data)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: got (%q,%v) want (%q,%v)", c.rtype, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestSetRdataParamsAllTypes(t *testing.T) {
+	rec := dnsprov.Record{Name: "x", Value: "10.0.0.1"}
+	for _, rt := range []string{"A", "AAAA", "CNAME", "PTR", "TXT"} {
+		rec.Type = rt
+		v := url.Values{}
+		if err := setRdataParams(rec, v); err != nil {
+			t.Errorf("%s: %v", rt, err)
+		}
+	}
+	rec.Type = "SRV"
+	if err := setRdataParams(rec, url.Values{}); err == nil {
+		t.Error("expected SRV unsupported error")
+	}
+}
+
+func TestListRecordsErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"status": "error", "errorMessage": "denied"})
+	}))
+	defer srv.Close()
+	c := New("t", Config{BaseURL: srv.URL, Token: "tok"})
+	if _, err := c.ListRecords(context.Background(), "z"); err == nil {
+		t.Error("expected error on status!=ok")
+	}
+}
+
+func TestServerError5xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	c := New("t", Config{BaseURL: srv.URL, Token: "tok"})
+	if err := c.EnsureZone(context.Background(), "z"); err == nil {
+		t.Error("expected error on 5xx")
+	}
+}
+
+func TestBadJSONResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+	c := New("t", Config{BaseURL: srv.URL, Token: "tok"})
+	if err := c.EnsureZone(context.Background(), "z"); err == nil {
+		t.Error("expected decode error")
+	}
+}
+
+func TestDeleteRecordToleratesDoesNotExist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"status": "error", "errorMessage": "Record does not exist"})
+	}))
+	defer srv.Close()
+	c := New("t", Config{BaseURL: srv.URL, Token: "tok"})
+	if err := c.DeleteRecord(context.Background(), "z",
+		dnsprov.Record{Name: "x", Type: "A", Value: "10.0.0.1"}); err != nil {
+		t.Errorf("does-not-exist should be OK: %v", err)
 	}
 }

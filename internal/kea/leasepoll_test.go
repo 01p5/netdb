@@ -73,6 +73,27 @@ func TestLeasePollerIngestsAndPrunes(t *testing.T) {
 	}
 }
 
+func TestLeasePollerStartReturnsOnCtxCancel(t *testing.T) {
+	st := openStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]Response{{Result: 3, Text: "empty"}})
+	}))
+	defer srv.Close()
+	p := NewLeasePoller(st, srv.URL, 50*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.Start(ctx); close(done) }()
+	time.Sleep(75 * time.Millisecond)
+	p.Trigger()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("LeasePoller.Start did not return on ctx cancel")
+	}
+}
+
 func TestLeasePollerKeaError(t *testing.T) {
 	st := openStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

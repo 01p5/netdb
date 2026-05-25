@@ -77,6 +77,27 @@ func TestSyncerReportsBuildError(t *testing.T) {
 	}
 }
 
+func TestSyncerStartReturnsOnCtxCancel(t *testing.T) {
+	st := openStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]Response{{Result: 0}})
+	}))
+	defer srv.Close()
+	s := New(st, srv.URL, 50*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { s.Start(ctx); close(done) }()
+	time.Sleep(75 * time.Millisecond)
+	s.Trigger()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Syncer.Start did not return on ctx cancel")
+	}
+}
+
 func TestSyncerReportsKeaError(t *testing.T) {
 	st := openStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
