@@ -6,6 +6,9 @@ data/
 /dhcp-probe
 /tmp/
 
+# Test coverage output
+coverage.out
+
 # Local env overrides (keep .env.example)
 .env
 .env.local
